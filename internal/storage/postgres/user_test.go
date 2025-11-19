@@ -22,6 +22,7 @@ func TestUserStorage_Save(t *testing.T) {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
+	// Init
 	userStorage := NewUserStorage(db)
 	teamStorage := NewTeamStorage(db)
 	ctx := context.Background()
@@ -33,8 +34,7 @@ func TestUserStorage_Save(t *testing.T) {
 	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID)
 	_, _ = db.Exec("DELETE FROM teams WHERE name = $1", teamName)
 
-	err = teamStorage.Save(ctx, domain.Team{Name: teamName})
-	if err != nil {
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
 		t.Fatalf("unexpected error saving team: %v", err)
 	}
 
@@ -46,15 +46,13 @@ func TestUserStorage_Save(t *testing.T) {
 	}
 
 	// Test create record
-	err = userStorage.Save(ctx, user)
-	if err != nil {
+	if err = userStorage.Save(ctx, user); err != nil {
 		t.Fatalf("unexpected error saving user: %v", err)
 	}
 
 	// Test exist record
 	var savedName string
-	err = db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&savedName)
-	if err != nil {
+	if err = db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&savedName); err != nil {
 		t.Fatalf("failed to find user: %v", err)
 	}
 	if savedName != user.Username {
