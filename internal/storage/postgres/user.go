@@ -27,3 +27,30 @@ func (s *UserStorage) Save(ctx context.Context, user domain.User) error {
 
 	return nil
 }
+
+// Gets a list of the team's active users.
+func (s *UserStorage) GetActiveUsersByTeam(ctx context.Context, teamName string) ([]domain.User, error) {
+	query := "SELECT id, username, is_active, team_name FROM users WHERE team_name = $1 AND is_active = true"
+
+	rows, err := s.db.QueryContext(ctx, query, teamName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]domain.User, 0)
+
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.IsActive, &u.TeamName); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return users, nil
+}

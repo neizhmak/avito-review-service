@@ -59,3 +59,76 @@ func TestUserStorage_Save(t *testing.T) {
 		t.Errorf("want %s, got %s", user.Username, savedName)
 	}
 }
+
+func TestGetActiveUsersByTeam(t *testing.T) {
+	connStr := "postgres://user:password@localhost:5432/reviewer_db?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Fatalf("failed to connect to db: %v", err)
+	}
+	defer db.Close()
+
+	// Check connections
+	if err := db.Ping(); err != nil {
+		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
+	}
+
+	// Init
+	userStorage := NewUserStorage(db)
+	teamStorage := NewTeamStorage(db)
+	ctx := context.Background()
+
+	userID1 := "test-user-1"
+	userID2 := "test-user-2"
+	userID3 := "test-user-3"
+	teamName := "test-team-users"
+
+	// Clear DB
+	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID1)
+	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID2)
+	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID3)
+	_, _ = db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+		t.Fatalf("unexpected error saving team: %v", err)
+	}
+
+	user1 := domain.User{
+		ID:       userID1,
+		Username: "TestUser1",
+		IsActive: true,
+		TeamName: teamName,
+	}
+
+	user2 := domain.User{
+		ID:       userID2,
+		Username: "TestUser2",
+		IsActive: true,
+		TeamName: teamName,
+	}
+
+	user3 := domain.User{
+		ID:       userID3,
+		Username: "TestUser3",
+		IsActive: false,
+		TeamName: teamName,
+	}
+
+	// Test create record
+	if err = userStorage.Save(ctx, user1); err != nil {
+		t.Fatalf("unexpected error saving user: %v", err)
+	}
+
+	if err = userStorage.Save(ctx, user2); err != nil {
+		t.Fatalf("unexpected error saving user: %v", err)
+	}
+
+	if err = userStorage.Save(ctx, user3); err != nil {
+		t.Fatalf("unexpected error saving user: %v", err)
+	}
+
+	// Test exist record
+	if arr, _ := userStorage.GetActiveUsersByTeam(ctx, teamName); len(arr) != 2 {
+		t.Fatalf("want 2, got %d", len(arr))
+	}
+}
