@@ -54,7 +54,7 @@ func TestPullRequestStorage_Save(t *testing.T) {
 	}
 
 	// Test create record
-	if err = prStorage.Save(ctx, pr); err != nil {
+	if err = prStorage.Save(ctx, db, pr); err != nil {
 		t.Fatalf("failed to save PR: %v", err)
 	}
 
