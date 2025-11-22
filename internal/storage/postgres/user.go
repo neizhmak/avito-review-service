@@ -54,3 +54,20 @@ func (s *UserStorage) GetActiveUsersByTeam(ctx context.Context, teamName string)
 
 	return users, nil
 }
+
+// GetByID retrieves a user by their ID.
+func (s *UserStorage) GetByID(ctx context.Context, userID string) (*domain.User, error) {
+	query := "SELECT id, username, is_active, team_name FROM users WHERE id = $1"
+	
+	row := s.db.QueryRowContext(ctx, query, userID)
+
+	var u domain.User
+	if err := row.Scan(&u.ID, &u.Username, &u.IsActive, &u.TeamName); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found: %s", userID) 
+		}
+		return nil, fmt.Errorf("failed to scan user: %w", err)
+	}
+
+	return &u, nil
+}
