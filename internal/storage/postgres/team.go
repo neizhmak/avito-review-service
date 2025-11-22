@@ -27,3 +27,20 @@ func (s *TeamStorage) Save(ctx context.Context, team domain.Team) error {
 
 	return nil
 }
+
+// GetByName retrieves a team by its name.
+func (s *TeamStorage) GetByName(ctx context.Context, name string) (*domain.Team, error) {
+	query := "SELECT name FROM teams WHERE name = $1"
+	
+	row := s.db.QueryRowContext(ctx, query, name)
+	
+	var t domain.Team
+	if err := row.Scan(&t.Name); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("team not found")
+		}
+		return nil, fmt.Errorf("failed to get team: %w", err)
+	}
+	
+	return &t, nil
+}

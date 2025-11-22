@@ -196,3 +196,49 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 
 	return newReviewer.ID, nil
 }
+
+// CreateTeam creates a new team along with its members.
+func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.Team, error) {
+	if err := s.teamStorage.Save(ctx, team); err != nil {
+		return nil, err
+	}
+
+	for _, u := range team.Members {
+		u.TeamName = team.Name
+		if err := s.userStorage.Save(ctx, u); err != nil {
+			return nil, fmt.Errorf("failed to save user %s: %w", u.ID, err)
+		}
+	}
+
+	return &team, nil
+}
+
+// GetPR retrieves a pull request by its ID.
+func (s *PRService) GetPR(ctx context.Context, id string) (*domain.PullRequest, error) {
+	return s.prStorage.GetByID(ctx, id)
+}
+
+// GetTeam retrieves a team by its name along with its members.
+func (s *PRService) GetTeam(ctx context.Context, teamName string) (*domain.Team, error) {
+	team, err := s.teamStorage.GetByName(ctx, teamName)
+	if err != nil {
+		return nil, err
+	}
+
+	members, err := s.userStorage.GetUsersByTeam(ctx, teamName)
+	if err != nil {
+		return nil, err
+	}
+	team.Members = members
+
+	return team, nil
+}
+
+// SetUserActive sets the active status of a user.
+func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive bool) (*domain.User, error) {
+	if err := s.userStorage.UpdateActivity(ctx, userID, isActive); err != nil {
+		return nil, err
+	}
+
+	return s.userStorage.GetByID(ctx, userID)
+}
