@@ -17,6 +17,7 @@ func TestPRService_Create(t *testing.T) {
 		t.Fatalf("failed to connect: %v", err)
 	}
 	defer db.Close()
+
 	// Check connections
 	if err := db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
@@ -85,5 +86,66 @@ func TestPRService_Create(t *testing.T) {
 	}
 	if dbPR.Status != "OPEN" {
 		t.Errorf("want OPEN in DB, got %s", dbPR.Status)
+	}
+}
+
+func TestPRService_Merge(t *testing.T) {
+	connStr := "postgres://user:password@localhost:5432/reviewer_db?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Fatalf("conn failed: %v", err)
+	}
+	defer db.Close()
+
+	// Check connections
+	if err := db.Ping(); err != nil {
+		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
+	}
+
+	// Init
+	prStorage := postgres.NewPullRequestStorage(db)
+	userStorage := postgres.NewUserStorage(db)
+	teamStorage := postgres.NewTeamStorage(db)
+	service := NewPRService(prStorage, userStorage, teamStorage, db)
+	ctx := context.Background()
+
+	teamName := "merge-team"
+	authorID := "merge-author"
+	prID := "merge-pr-1"
+
+	// Сlear DB
+	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
+	db.Exec("DELETE FROM users WHERE id = $1", authorID)
+	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+
+	teamStorage.Save(ctx, domain.Team{Name: teamName})
+	userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName})
+
+	originalPR := domain.PullRequest{ID: prID, Title: "Merge Me", AuthorID: authorID, Status: "OPEN"}
+	prStorage.Save(ctx, db, originalPR)
+
+	// Test merge
+	mergedPR, err := service.Merge(ctx, prID)
+	if err != nil {
+		t.Fatalf("first merge failed: %v", err)
+	}
+
+	// Verify merged PR
+	if mergedPR.Status != "MERGED" {
+		t.Errorf("want MERGED, got %s", mergedPR.Status)
+	}
+	if mergedPR.MergedAt == nil {
+		t.Error("want MergedAt not nil")
+	}
+
+	// Test idempotent merge
+	mergedPR2, err := service.Merge(ctx, prID)
+	if err != nil {
+		t.Fatalf("second merge failed: %v", err)
+	}
+
+	// Verify idempotent merged PR
+	if mergedPR2.Status != "MERGED" {
+		t.Errorf("want MERGED, got %s", mergedPR2.Status)
 	}
 }

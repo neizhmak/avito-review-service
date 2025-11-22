@@ -58,3 +58,19 @@ func (s *PullRequestStorage) GetByID(ctx context.Context, id string) (*domain.Pu
 
 	return &pr, nil
 }
+
+// UpdateStatus updates the status of a pull request, setting merged_at if status is MERGED.
+func (s *PullRequestStorage) UpdateStatus(ctx context.Context, executor QueryExecutor, id string, status string) error {
+	var query string
+	if status == "MERGED" {
+		query = "UPDATE pull_requests SET status = $1, merged_at = NOW() WHERE id = $2"
+	} else {
+		query = "UPDATE pull_requests SET status = $1 WHERE id = $2"
+	}
+
+	_, err := executor.ExecContext(ctx, query, status, id)
+	if err != nil {
+		return fmt.Errorf("failed to update pr status: %w", err)
+	}
+	return nil
+}

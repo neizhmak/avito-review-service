@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
 	"github.com/neizhmak/avito-review-service/internal/storage/postgres"
@@ -87,4 +88,26 @@ func selectRandomReviewers(candidates []domain.User, authorID string, count int)
 		return valid
 	}
 	return valid[:count]
+}
+
+// Merge marks a pull request as merged. The operation is idempotent.
+func (s *PRService) Merge(ctx context.Context, prID string) (*domain.PullRequest, error) {
+	pr, err := s.prStorage.GetByID(ctx, prID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pr: %w", err)
+	}
+
+	if pr.Status == "MERGED" {
+		return pr, nil
+	}
+
+	if err := s.prStorage.UpdateStatus(ctx, s.db, prID, "MERGED"); err != nil {
+		return nil, err
+	}
+
+	pr.Status = "MERGED"
+	now := time.Now()
+	pr.MergedAt = &now
+
+	return pr, nil
 }
