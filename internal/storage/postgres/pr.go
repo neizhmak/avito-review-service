@@ -74,3 +74,38 @@ func (s *PullRequestStorage) UpdateStatus(ctx context.Context, executor QueryExe
 	}
 	return nil
 }
+
+// GetReviewers retrieves the list of reviewer IDs for a given pull request.
+func (s *PullRequestStorage) GetReviewers(ctx context.Context, prID string) ([]string, error) {
+	query := "SELECT reviewer_id FROM pr_reviewers WHERE pull_request_id = $1"
+	rows, err := s.db.QueryContext(ctx, query, prID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query reviewers: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// DeleteReviewer removes a reviewer from a pull request.
+func (s *PullRequestStorage) DeleteReviewer(ctx context.Context, executor QueryExecutor, prID, reviewerID string) error {
+	query := "DELETE FROM pr_reviewers WHERE pull_request_id = $1 AND reviewer_id = $2"
+	res, err := executor.ExecContext(ctx, query, prID, reviewerID)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("reviewer not found on this PR")
+	}
+	return nil
+}

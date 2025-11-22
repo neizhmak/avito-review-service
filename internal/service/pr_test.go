@@ -149,3 +149,88 @@ func TestPRService_Merge(t *testing.T) {
 		t.Errorf("want MERGED, got %s", mergedPR2.Status)
 	}
 }
+
+func TestPRService_Reassign(t *testing.T) {
+	connStr := "postgres://user:password@localhost:5432/reviewer_db?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Fatalf("conn failed: %v", err)
+	}
+	defer db.Close()
+
+	// Check connections
+	if err := db.Ping(); err != nil {
+		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
+	}
+
+	// Init
+	prStorage := postgres.NewPullRequestStorage(db)
+	userStorage := postgres.NewUserStorage(db)
+	teamStorage := postgres.NewTeamStorage(db)
+	service := NewPRService(prStorage, userStorage, teamStorage, db)
+	ctx := context.Background()
+
+	teamName := "reassign-team"
+	authorID := "reassign-author"
+	oldReviewerID := "reassign-old-rev"
+	newReviewerID := "reassign-new-rev"
+	prID := "reassign-pr-1"
+
+	// Clear DB
+	db.Exec("DELETE FROM pr_reviewers WHERE pull_request_id = $1", prID)
+	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
+	db.Exec("DELETE FROM users WHERE team_name = $1", teamName)
+	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+
+	teamStorage.Save(ctx, domain.Team{Name: teamName})
+	userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName})
+	userStorage.Save(ctx, domain.User{ID: oldReviewerID, Username: "OldRev", IsActive: true, TeamName: teamName})
+	userStorage.Save(ctx, domain.User{ID: newReviewerID, Username: "NewRev", IsActive: true, TeamName: teamName})
+
+	originalPR := domain.PullRequest{ID: prID, Title: "Reassign Me", AuthorID: authorID, Status: "OPEN"}
+	prStorage.Save(ctx, db, originalPR)
+	prStorage.SaveReviewer(ctx, db, prID, oldReviewerID)
+
+	// Test reassign
+	newRevID, err := service.Reassign(ctx, prID, oldReviewerID)
+	if err != nil {
+		t.Fatalf("reassign failed: %v", err)
+	}
+
+	// Verify reassignment
+	if newRevID != newReviewerID {
+		t.Errorf("want new reviewer %s, got %s", newReviewerID, newRevID)
+	}
+
+	gotPR, err := prStorage.GetByID(ctx, prID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify reviewers
+	reviewers, err := prStorage.GetReviewers(ctx, prID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, revID := range reviewers {
+		if revID == oldReviewerID {
+			t.Errorf("old reviewer %s still assigned", oldReviewerID)
+		}
+	}
+
+	foundNew := false
+	for _, revID := range reviewers {
+		if revID == newReviewerID {
+			foundNew = true
+			break
+		}
+	}
+	if !foundNew {
+		t.Errorf("new reviewer %s not assigned", newReviewerID)
+	}
+
+	if gotPR.Status != "OPEN" {
+		t.Errorf("want PR status OPEN, got %s", gotPR.Status)
+	}
+}
