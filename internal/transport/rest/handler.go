@@ -30,6 +30,7 @@ func (h *Handler) InitRouter() *chi.Mux {
 	r.Post("/team/add", h.createTeam)
 	r.Get("/team/get", h.getTeam)
 	r.Post("/users/setIsActive", h.setUserActive)
+	r.Get("/users/getReview", h.getUserReviews)
 	r.Post("/pullRequest/create", h.createPR)
 	r.Post("/pullRequest/merge", h.mergePR)
 	r.Post("/pullRequest/reassign", h.reassignReviewer)
@@ -209,5 +210,30 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"user": updatedUser,
+	})
+}
+
+// getUserReviews handles the HTTP request to retrieve pull requests assigned to a user for review.
+func (h *Handler) getUserReviews(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		respondError(w, http.StatusBadRequest, "user_id is required")
+		return
+	}
+
+	prs, err := h.service.GetUserReviews(r.Context(), userID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Ensure prs is not nil
+	if prs == nil {
+		prs = []domain.PullRequest{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"user_id":       userID,
+		"pull_requests": prs,
 	})
 }

@@ -242,3 +242,8 @@ func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive b
 
 	return s.userStorage.GetByID(ctx, userID)
 }
+
+// GetUserReviews retrieves all pull requests assigned to a specific reviewer.
+func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]domain.PullRequest, error) {
+	return s.prStorage.GetByReviewerID(ctx, reviewerID)
+}

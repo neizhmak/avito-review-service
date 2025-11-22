@@ -109,3 +109,29 @@ func (s *PullRequestStorage) DeleteReviewer(ctx context.Context, executor QueryE
 	}
 	return nil
 }
+
+// GetByReviewerID retrieves all pull requests assigned to a specific reviewer.
+func (s *PullRequestStorage) GetByReviewerID(ctx context.Context, reviewerID string) ([]domain.PullRequest, error) {
+	query := `
+		SELECT pr.id, pr.title, pr.author_id, pr.status
+		FROM pull_requests pr
+		JOIN pr_reviewers rev ON pr.id = rev.pull_request_id
+		WHERE rev.reviewer_id = $1
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, reviewerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query reviewer prs: %w", err)
+	}
+	defer rows.Close()
+
+	var prs []domain.PullRequest
+	for rows.Next() {
+		var pr domain.PullRequest
+		if err := rows.Scan(&pr.ID, &pr.Title, &pr.AuthorID, &pr.Status); err != nil {
+			return nil, err
+		}
+		prs = append(prs, pr)
+	}
+	return prs, rows.Err()
+}
