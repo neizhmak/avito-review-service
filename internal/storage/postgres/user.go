@@ -36,7 +36,9 @@ func (s *UserStorage) GetActiveUsersByTeam(ctx context.Context, teamName string)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	users := make([]domain.User, 0)
 
@@ -79,7 +81,9 @@ func (s *UserStorage) GetUsersByTeam(ctx context.Context, teamName string) ([]do
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	users := make([]domain.User, 0)
 	for rows.Next() {

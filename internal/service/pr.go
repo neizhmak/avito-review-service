@@ -38,9 +38,11 @@ func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
-	if err := s.prStorage.Save(ctx, tx, pr); err != nil {
+	if err = s.prStorage.Save(ctx, tx, pr); err != nil {
 		return nil, fmt.Errorf("failed to save pr: %w", err)
 	}
 
@@ -57,12 +59,12 @@ func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.
 	reviewers := selectRandomReviewers(candidates, pr.AuthorID, 2)
 
 	for _, r := range reviewers {
-		if err := s.prStorage.SaveReviewer(ctx, tx, pr.ID, r.ID); err != nil {
+		if err = s.prStorage.SaveReviewer(ctx, tx, pr.ID, r.ID); err != nil {
 			return nil, fmt.Errorf("failed to save reviewer: %w", err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit tx: %w", err)
 	}
 
@@ -181,16 +183,18 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
-	if err := s.prStorage.DeleteReviewer(ctx, tx, prID, oldUserID); err != nil {
+	if err = s.prStorage.DeleteReviewer(ctx, tx, prID, oldUserID); err != nil {
 		return "", err
 	}
-	if err := s.prStorage.SaveReviewer(ctx, tx, prID, newReviewer.ID); err != nil {
+	if err = s.prStorage.SaveReviewer(ctx, tx, prID, newReviewer.ID); err != nil {
 		return "", err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return "", err
 	}
 

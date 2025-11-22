@@ -15,10 +15,12 @@ func TestUserStorage_Save(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to db: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -31,8 +33,12 @@ func TestUserStorage_Save(t *testing.T) {
 	teamName := "test-team-users"
 
 	// Clear DB
-	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID)
-	_, _ = db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM users WHERE ID = $1", userID); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
 	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
 		t.Fatalf("unexpected error saving team: %v", err)
@@ -66,10 +72,12 @@ func TestGetActiveUsersByTeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to db: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -84,10 +92,18 @@ func TestGetActiveUsersByTeam(t *testing.T) {
 	teamName := "test-team-users"
 
 	// Clear DB
-	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID1)
-	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID2)
-	_, _ = db.Exec("DELETE FROM users WHERE ID = $1", userID3)
-	_, _ = db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM users WHERE ID = $1", userID1); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE ID = $1", userID2); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE ID = $1", userID3); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
 	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
 		t.Fatalf("unexpected error saving team: %v", err)
@@ -127,7 +143,11 @@ func TestGetActiveUsersByTeam(t *testing.T) {
 	}
 
 	// Test get active users by team
-	if arr, _ := userStorage.GetActiveUsersByTeam(ctx, teamName); len(arr) != 2 {
+	arr, err := userStorage.GetActiveUsersByTeam(ctx, teamName)
+	if err != nil {
+		t.Fatalf("failed to get active users: %v", err)
+	}
+	if len(arr) != 2 {
 		t.Fatalf("want 2, got %d", len(arr))
 	}
 }
@@ -138,10 +158,12 @@ func TestUserStorage_GetByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -152,12 +174,16 @@ func TestUserStorage_GetByID(t *testing.T) {
 
 	userID := "test-get-id"
 	teamName := "test-team-get-id"
-	
-	// Сlear DB
-	db.Exec("DELETE FROM users WHERE id = $1", userID)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
 
-	if err := teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+	// Сlear DB
+	if _, err = db.Exec("DELETE FROM users WHERE id = $1", userID); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
+
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
 		t.Fatalf("failed to save team: %v", err)
 	}
 
@@ -168,7 +194,7 @@ func TestUserStorage_GetByID(t *testing.T) {
 	}
 
 	expectedUser := domain.User{ID: userID, Username: "GetByIdUser", IsActive: true, TeamName: teamName}
-	if err := userStorage.Save(ctx, expectedUser); err != nil {
+	if err = userStorage.Save(ctx, expectedUser); err != nil {
 		t.Fatalf("failed to save user: %v", err)
 	}
 
@@ -177,7 +203,7 @@ func TestUserStorage_GetByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	
+
 	// Verify user fields
 	if u.ID != expectedUser.ID || u.Username != expectedUser.Username {
 		t.Errorf("want %v, got %v", expectedUser, u)

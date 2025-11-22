@@ -16,10 +16,12 @@ func TestPRService_Create(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -37,13 +39,21 @@ func TestPRService_Create(t *testing.T) {
 	reviewer2ID := "u-rev-2"
 	prID := "pr-service-1"
 
-	db.Exec("DELETE FROM pr_reviewers WHERE pull_request_id = $1", prID)
-	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
-	db.Exec("DELETE FROM users WHERE team_name = $1", teamName)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM pr_reviewers WHERE pull_request_id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pr_reviewers: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM pull_requests WHERE id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pull_requests: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE team_name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
 	team := domain.Team{Name: teamName}
-	if err := teamStorage.Save(ctx, team); err != nil {
+	if err = teamStorage.Save(ctx, team); err != nil {
 		t.Fatalf("prep failed: %v", err)
 	}
 
@@ -54,7 +64,7 @@ func TestPRService_Create(t *testing.T) {
 	}
 
 	for _, u := range users {
-		if err := userStorage.Save(ctx, u); err != nil {
+		if err = userStorage.Save(ctx, u); err != nil {
 			t.Fatalf("prep failed saving user %s: %v", u.ID, err)
 		}
 	}
@@ -95,10 +105,12 @@ func TestPRService_Merge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conn failed: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -114,15 +126,27 @@ func TestPRService_Merge(t *testing.T) {
 	prID := "merge-pr-1"
 
 	// Сlear DB
-	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
-	db.Exec("DELETE FROM users WHERE id = $1", authorID)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM pull_requests WHERE id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pull_requests: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE id = $1", authorID); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
-	teamStorage.Save(ctx, domain.Team{Name: teamName})
-	userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName})
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+		t.Fatalf("failed to save team: %v", err)
+	}
+	if err = userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName}); err != nil {
+		t.Fatalf("failed to save user: %v", err)
+	}
 
 	originalPR := domain.PullRequest{ID: prID, Title: "Merge Me", AuthorID: authorID, Status: "OPEN"}
-	prStorage.Save(ctx, db, originalPR)
+	if err = prStorage.Save(ctx, db, originalPR); err != nil {
+		t.Fatalf("failed to save pr: %v", err)
+	}
 
 	// Test merge
 	mergedPR, err := service.Merge(ctx, prID)
@@ -156,10 +180,12 @@ func TestPRService_Reassign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conn failed: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -177,19 +203,39 @@ func TestPRService_Reassign(t *testing.T) {
 	prID := "reassign-pr-1"
 
 	// Clear DB
-	db.Exec("DELETE FROM pr_reviewers WHERE pull_request_id = $1", prID)
-	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
-	db.Exec("DELETE FROM users WHERE team_name = $1", teamName)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM pr_reviewers WHERE pull_request_id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pr_reviewers: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM pull_requests WHERE id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pull_requests: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE team_name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
-	teamStorage.Save(ctx, domain.Team{Name: teamName})
-	userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName})
-	userStorage.Save(ctx, domain.User{ID: oldReviewerID, Username: "OldRev", IsActive: true, TeamName: teamName})
-	userStorage.Save(ctx, domain.User{ID: newReviewerID, Username: "NewRev", IsActive: true, TeamName: teamName})
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+		t.Fatalf("failed to save team: %v", err)
+	}
+	if err = userStorage.Save(ctx, domain.User{ID: authorID, Username: "Auth", IsActive: true, TeamName: teamName}); err != nil {
+		t.Fatalf("failed to save author: %v", err)
+	}
+	if err = userStorage.Save(ctx, domain.User{ID: oldReviewerID, Username: "OldRev", IsActive: true, TeamName: teamName}); err != nil {
+		t.Fatalf("failed to save old reviewer: %v", err)
+	}
+	if err = userStorage.Save(ctx, domain.User{ID: newReviewerID, Username: "NewRev", IsActive: true, TeamName: teamName}); err != nil {
+		t.Fatalf("failed to save new reviewer: %v", err)
+	}
 
 	originalPR := domain.PullRequest{ID: prID, Title: "Reassign Me", AuthorID: authorID, Status: "OPEN"}
-	prStorage.Save(ctx, db, originalPR)
-	prStorage.SaveReviewer(ctx, db, prID, oldReviewerID)
+	if err = prStorage.Save(ctx, db, originalPR); err != nil {
+		t.Fatalf("failed to save pr: %v", err)
+	}
+	if err = prStorage.SaveReviewer(ctx, db, prID, oldReviewerID); err != nil {
+		t.Fatalf("failed to save reviewer: %v", err)
+	}
 
 	// Test reassign
 	newRevID, err := service.Reassign(ctx, prID, oldReviewerID)

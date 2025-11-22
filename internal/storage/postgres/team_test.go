@@ -15,10 +15,12 @@ func TestTeamStorage_Save(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to db: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -29,7 +31,9 @@ func TestTeamStorage_Save(t *testing.T) {
 	teamName := "test-team-1"
 
 	// Clear DB
-	_, _ = db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
 	// Test create record
 	if err = storage.Save(ctx, domain.Team{Name: teamName}); err != nil {

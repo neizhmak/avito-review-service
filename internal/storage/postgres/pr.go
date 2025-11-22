@@ -82,7 +82,9 @@ func (s *PullRequestStorage) GetReviewers(ctx context.Context, prID string) ([]s
 	if err != nil {
 		return nil, fmt.Errorf("failed to query reviewers: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var ids []string
 	for rows.Next() {
@@ -123,7 +125,9 @@ func (s *PullRequestStorage) GetByReviewerID(ctx context.Context, reviewerID str
 	if err != nil {
 		return nil, fmt.Errorf("failed to query reviewer prs: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var prs []domain.PullRequest
 	for rows.Next() {

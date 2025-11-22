@@ -15,10 +15,12 @@ func TestPullRequestStorage_Save(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Check connections
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		t.Fatalf("failed to ping db: %v. Make sure Docker is running!", err)
 	}
 
@@ -33,16 +35,22 @@ func TestPullRequestStorage_Save(t *testing.T) {
 	prID := "pr-1"
 
 	// Clear DB
-	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
-	db.Exec("DELETE FROM users WHERE id = $1", authorID)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM pull_requests WHERE id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pull_requests: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE id = $1", authorID); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
-	if err := teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
 		t.Fatalf("failed to save team: %v", err)
 	}
 
 	author := domain.User{ID: authorID, Username: "Dev", IsActive: true, TeamName: teamName}
-	if err := userStorage.Save(ctx, author); err != nil {
+	if err = userStorage.Save(ctx, author); err != nil {
 		t.Fatalf("failed to save author: %v", err)
 	}
 
@@ -74,7 +82,9 @@ func TestPullRequestStorage_GetByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Init
 	teamStorage := NewTeamStorage(db)
@@ -87,12 +97,22 @@ func TestPullRequestStorage_GetByID(t *testing.T) {
 	prID := "test-pr-get-id"
 
 	// Clear DB
-	db.Exec("DELETE FROM pull_requests WHERE id = $1", prID)
-	db.Exec("DELETE FROM users WHERE id = $1", authorID)
-	db.Exec("DELETE FROM teams WHERE name = $1", teamName)
+	if _, err = db.Exec("DELETE FROM pull_requests WHERE id = $1", prID); err != nil {
+		t.Fatalf("failed to cleanup pull_requests: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM users WHERE id = $1", authorID); err != nil {
+		t.Fatalf("failed to cleanup users: %v", err)
+	}
+	if _, err = db.Exec("DELETE FROM teams WHERE name = $1", teamName); err != nil {
+		t.Fatalf("failed to cleanup teams: %v", err)
+	}
 
-	teamStorage.Save(ctx, domain.Team{Name: teamName})
-	userStorage.Save(ctx, domain.User{ID: authorID, Username: "Author", IsActive: true, TeamName: teamName})
+	if err = teamStorage.Save(ctx, domain.Team{Name: teamName}); err != nil {
+		t.Fatalf("failed to save team: %v", err)
+	}
+	if err = userStorage.Save(ctx, domain.User{ID: authorID, Username: "Author", IsActive: true, TeamName: teamName}); err != nil {
+		t.Fatalf("failed to save author: %v", err)
+	}
 
 	originalPR := domain.PullRequest{
 		ID:       prID,
@@ -100,7 +120,7 @@ func TestPullRequestStorage_GetByID(t *testing.T) {
 		AuthorID: authorID,
 		Status:   "OPEN",
 	}
-	if err := prStorage.Save(ctx, db, originalPR); err != nil {
+	if err = prStorage.Save(ctx, db, originalPR); err != nil {
 		t.Fatalf("failed to save pr: %v", err)
 	}
 

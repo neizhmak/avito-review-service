@@ -42,7 +42,9 @@ func (h *Handler) InitRouter() *chi.Mux {
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.WriteHeader(status)
 	if payload != nil {
-		json.NewEncoder(w).Encode(payload)
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		}
 	}
 }
 
