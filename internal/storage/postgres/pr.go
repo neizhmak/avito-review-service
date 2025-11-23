@@ -59,6 +59,12 @@ func (s *PullRequestStorage) GetByID(ctx context.Context, id string) (*domain.Pu
 		pr.MergedAt = &mergedAt.Time
 	}
 
+	reviewers, err := s.GetReviewers(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reviewers: %w", err)
+	}
+	pr.Reviewers = reviewers
+
 	return &pr, nil
 }
 
@@ -89,7 +95,7 @@ func (s *PullRequestStorage) GetReviewers(ctx context.Context, prID string) ([]s
 		_ = rows.Close()
 	}()
 
-	var ids []string
+	ids := make([]string, 0)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
