@@ -8,20 +8,39 @@ import (
 	"github.com/neizhmak/avito-review-service/internal/domain"
 )
 
+type createPRRequest struct {
+	ID       string `json:"pull_request_id"`
+	Title    string `json:"pull_request_name"`
+	AuthorID string `json:"author_id"`
+}
+
+type mergePRRequest struct {
+	PRID string `json:"pull_request_id"`
+}
+
+type reassignPRRequest struct {
+	PRID      string `json:"pull_request_id"`
+	OldUserID string `json:"old_user_id"`
+}
+
 // createPR handles the HTTP request to create a new pull request.
 func (h *Handler) createPR(w http.ResponseWriter, r *http.Request) {
-	var pr domain.PullRequest
-	if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
+	var req createPRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
-	if strings.TrimSpace(pr.ID) == "" || strings.TrimSpace(pr.Title) == "" || strings.TrimSpace(pr.AuthorID) == "" {
+	if strings.TrimSpace(req.ID) == "" || strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.AuthorID) == "" {
 		respondError(w, http.StatusBadRequest, "ERROR", "pull_request_id, pull_request_name and author_id are required")
 		return
 	}
 
-	createdPR, err := h.service.Create(r.Context(), pr)
+	createdPR, err := h.service.Create(r.Context(), domain.PullRequest{
+		ID:       req.ID,
+		Title:    req.Title,
+		AuthorID: req.AuthorID,
+	})
 	if err != nil {
 		status, code, msg := mapError(err)
 		respondError(w, status, code, msg)
@@ -35,9 +54,7 @@ func (h *Handler) createPR(w http.ResponseWriter, r *http.Request) {
 
 // mergePR handles the HTTP request to merge a pull request.
 func (h *Handler) mergePR(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PRID string `json:"pull_request_id"`
-	}
+	var req mergePRRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
@@ -62,17 +79,12 @@ func (h *Handler) mergePR(w http.ResponseWriter, r *http.Request) {
 
 // reassignReviewer handles the HTTP request to reassign a reviewer on a pull request.
 func (h *Handler) reassignReviewer(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PRID      string `json:"pull_request_id"`
-		OldUserID string `json:"old_user_id"`
-	}
-
-	type Alias struct {
+	var req reassignPRRequest
+	var temp struct {
 		PRID          string `json:"pull_request_id"`
 		OldUserID     string `json:"old_user_id"`
 		OldReviewerID string `json:"old_reviewer_id"`
 	}
-	var temp Alias
 	if err := json.NewDecoder(r.Body).Decode(&temp); err != nil {
 		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return

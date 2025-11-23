@@ -8,11 +8,13 @@ import (
 	"github.com/neizhmak/avito-review-service/internal/domain"
 )
 
+type setUserActiveRequest struct {
+	UserID   string `json:"user_id"`
+	IsActive bool   `json:"is_active"`
+}
+
 func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID   string `json:"user_id"`
-		IsActive bool   `json:"is_active"`
-	}
+	var req setUserActiveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
