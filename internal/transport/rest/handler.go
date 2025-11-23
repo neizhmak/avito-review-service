@@ -35,6 +35,7 @@ func (h *Handler) InitRouter() *chi.Mux {
 	r.Post("/pullRequest/create", h.createPR)
 	r.Post("/pullRequest/merge", h.mergePR)
 	r.Post("/pullRequest/reassign", h.reassignReviewer)
+	r.Get("/health/stats", h.getStats)
 
 	return r
 }
@@ -257,4 +258,14 @@ func (h *Handler) deactivateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deactivated"})
+}
+
+// getStats handles the HTTP request to retrieve system statistics.
+func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetStats(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, stats)
 }

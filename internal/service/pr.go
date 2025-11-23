@@ -276,3 +276,8 @@ func (s *PRService) DeactivateTeam(ctx context.Context, teamName string) error {
 
 	return tx.Commit()
 }
+
+// GetStats retrieves system statistics related to pull requests.
+func (s *PRService) GetStats(ctx context.Context) (*domain.SystemStats, error) {
+	return s.prStorage.GetSystemStats(ctx)
+}

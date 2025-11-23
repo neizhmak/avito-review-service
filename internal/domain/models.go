@@ -25,3 +25,13 @@ type PullRequest struct {
 	CreatedAt time.Time  `json:"created_at"`
 	MergedAt  *time.Time `json:"merged_at"` // Use a pointer (*) because the date can be NULL.
 }
+
+type ReviewerStats struct {
+	ReviewerID string `json:"reviewer_id"`
+	Count      int    `json:"review_count"`
+}
+
+type SystemStats struct {
+	TotalPRs     int             `json:"total_prs"`
+	TopReviewers []ReviewerStats `json:"top_reviewers"`
+}

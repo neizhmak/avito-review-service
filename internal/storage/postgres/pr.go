@@ -157,3 +157,36 @@ func (s *PullRequestStorage) RemoveReviewersByTeam(ctx context.Context, executor
 	}
 	return nil
 }
+
+// GetSystemStats retrieves overall system statistics.
+func (s *PullRequestStorage) GetSystemStats(ctx context.Context) (*domain.SystemStats, error) {
+	stats := &domain.SystemStats{}
+
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pull_requests").Scan(&stats.TotalPRs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count prs: %w", err)
+	}
+
+	query := `
+		SELECT reviewer_id, COUNT(*) as cnt
+		FROM pr_reviewers
+		GROUP BY reviewer_id
+		ORDER BY cnt DESC
+		LIMIT 5
+	`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query top reviewers: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r domain.ReviewerStats
+		if err := rows.Scan(&r.ReviewerID, &r.Count); err != nil {
+			return nil, err
+		}
+		stats.TopReviewers = append(stats.TopReviewers, r)
+	}
+
+	return stats, nil
+}
