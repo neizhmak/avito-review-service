@@ -139,3 +139,21 @@ func (s *PullRequestStorage) GetByReviewerID(ctx context.Context, reviewerID str
 	}
 	return prs, rows.Err()
 }
+
+// RemoveReviewersByTeam removes all reviewers from open pull requests for a given team.
+func (s *PullRequestStorage) RemoveReviewersByTeam(ctx context.Context, executor QueryExecutor, teamName string) error {
+	query := `
+		DELETE FROM pr_reviewers
+		WHERE reviewer_id IN (
+			SELECT id FROM users WHERE team_name = $1
+		)
+		AND pull_request_id IN (
+			SELECT id FROM pull_requests WHERE status = 'OPEN'
+		)
+	`
+	_, err := executor.ExecContext(ctx, query, teamName)
+	if err != nil {
+		return fmt.Errorf("failed to remove team reviewers: %w", err)
+	}
+	return nil
+}

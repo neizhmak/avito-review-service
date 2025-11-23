@@ -110,3 +110,13 @@ func (s *UserStorage) UpdateActivity(ctx context.Context, userID string, isActiv
 	}
 	return nil
 }
+
+// MassDeactivate sets is_active to false for all users in the specified team.
+func (s *UserStorage) MassDeactivate(ctx context.Context, executor QueryExecutor, teamName string) error {
+	query := "UPDATE users SET is_active = false WHERE team_name = $1"
+	_, err := executor.ExecContext(ctx, query, teamName)
+	if err != nil {
+		return fmt.Errorf("failed to deactivate users: %w", err)
+	}
+	return nil
+}

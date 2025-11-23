@@ -251,3 +251,28 @@ func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive b
 func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]domain.PullRequest, error) {
 	return s.prStorage.GetByReviewerID(ctx, reviewerID)
 }
+
+// DeactivateTeam deactivates all users in a team and removes them from open pull requests.
+func (s *PRService) DeactivateTeam(ctx context.Context, teamName string) error {
+	_, err := s.teamStorage.GetByName(ctx, teamName)
+	if err != nil {
+		return err
+	}
+
+	// Transactional operation
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := s.userStorage.MassDeactivate(ctx, tx, teamName); err != nil {
+		return err
+	}
+
+	if err := s.prStorage.RemoveReviewersByTeam(ctx, tx, teamName); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}

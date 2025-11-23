@@ -28,6 +28,7 @@ func (h *Handler) InitRouter() *chi.Mux {
 	r.Use(middleware.SetHeader("Content-Type", "application/json"))
 
 	r.Post("/team/add", h.createTeam)
+	r.Post("/team/deactivate", h.deactivateTeam)
 	r.Get("/team/get", h.getTeam)
 	r.Post("/users/setIsActive", h.setUserActive)
 	r.Get("/users/getReview", h.getUserReviews)
@@ -238,4 +239,22 @@ func (h *Handler) getUserReviews(w http.ResponseWriter, r *http.Request) {
 		"user_id":       userID,
 		"pull_requests": prs,
 	})
+}
+
+// deactivateTeam handles the HTTP request to deactivate all users in a team.
+func (h *Handler) deactivateTeam(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TeamName string `json:"team_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	if err := h.service.DeactivateTeam(r.Context(), req.TeamName); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deactivated"})
 }
