@@ -37,7 +37,7 @@ func (s *TeamStorage) GetByName(ctx context.Context, name string) (*domain.Team,
 	var t domain.Team
 	if err := row.Scan(&t.Name); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("team not found")
+			return nil, fmt.Errorf("%w: team", ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get team: %w", err)
 	}

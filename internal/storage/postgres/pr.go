@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
 )
@@ -48,12 +49,19 @@ func (s *PullRequestStorage) GetByID(ctx context.Context, id string) (*domain.Pu
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var pr domain.PullRequest
-	err := row.Scan(&pr.ID, &pr.Title, &pr.AuthorID, &pr.Status, &pr.CreatedAt, &pr.MergedAt)
+	var createdAt time.Time
+	var mergedAt sql.NullTime
+	err := row.Scan(&pr.ID, &pr.Title, &pr.AuthorID, &pr.Status, &createdAt, &mergedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("pr not found")
+			return nil, fmt.Errorf("%w: pr", ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to scan pr: %w", err)
+	}
+
+	pr.CreatedAt = &createdAt
+	if mergedAt.Valid {
+		pr.MergedAt = &mergedAt.Time
 	}
 
 	return &pr, nil
@@ -107,7 +115,7 @@ func (s *PullRequestStorage) DeleteReviewer(ctx context.Context, executor QueryE
 
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("reviewer not found on this PR")
+		return fmt.Errorf("%w: reviewer not found on this PR", ErrNotFound)
 	}
 	return nil
 }
@@ -178,7 +186,9 @@ func (s *PullRequestStorage) GetSystemStats(ctx context.Context) (*domain.System
 	if err != nil {
 		return nil, fmt.Errorf("failed to query top reviewers: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var r domain.ReviewerStats

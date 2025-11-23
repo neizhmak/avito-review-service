@@ -141,8 +141,8 @@ func TestPullRequestStorage_GetByID(t *testing.T) {
 		t.Errorf("want Status OPEN, got %s", gotPR.Status)
 	}
 
-	if gotPR.CreatedAt.IsZero() {
-		t.Error("expected CreatedAt to be set by DB, got zero time")
+	if gotPR.CreatedAt == nil || gotPR.CreatedAt.IsZero() {
+		t.Error("expected CreatedAt to be set by DB, got nil or zero time")
 	}
 
 	if gotPR.MergedAt != nil {

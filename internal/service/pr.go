@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
@@ -34,6 +36,25 @@ func NewPRService(
 
 // Create creates a new pull request and assigns reviewers.
 func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.PullRequest, error) {
+	pr.Status = "OPEN"
+
+	// Validate author
+	author, err := s.userStorage.GetByID(ctx, pr.AuthorID)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("author not found")
+		}
+		return nil, fmt.Errorf("failed to get author: %w", err)
+	}
+
+	// Check duplicates
+	existing, getErr := s.prStorage.GetByID(ctx, pr.ID)
+	if getErr == nil && existing != nil {
+		return nil, conflict(ErrCodePRExists, "PR id already exists")
+	} else if getErr != nil && !errors.Is(getErr, postgres.ErrNotFound) {
+		return nil, fmt.Errorf("failed to check PR existence: %w", getErr)
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin tx: %w", err)
@@ -44,11 +65,6 @@ func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.
 
 	if err = s.prStorage.Save(ctx, tx, pr); err != nil {
 		return nil, fmt.Errorf("failed to save pr: %w", err)
-	}
-
-	author, err := s.userStorage.GetByID(ctx, pr.AuthorID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get author: %w", err)
 	}
 
 	candidates, err := s.userStorage.GetActiveUsersByTeam(ctx, author.TeamName)
@@ -96,6 +112,9 @@ func selectRandomReviewers(candidates []domain.User, authorID string, count int)
 func (s *PRService) Merge(ctx context.Context, prID string) (*domain.PullRequest, error) {
 	pr, err := s.prStorage.GetByID(ctx, prID)
 	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("pr not found")
+		}
 		return nil, fmt.Errorf("failed to get pr: %w", err)
 	}
 
@@ -118,10 +137,13 @@ func (s *PRService) Merge(ctx context.Context, prID string) (*domain.PullRequest
 func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (string, error) {
 	pr, err := s.prStorage.GetByID(ctx, prID)
 	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return "", notFound("pr not found")
+		}
 		return "", fmt.Errorf("pr not found: %w", err)
 	}
 	if pr.Status == "MERGED" {
-		return "", fmt.Errorf("cannot reassign on merged PR")
+		return "", conflict(ErrCodePRMerged, "cannot reassign on merged PR")
 	}
 
 	currentReviewers, err := s.prStorage.GetReviewers(ctx, prID)
@@ -136,11 +158,14 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 		}
 	}
 	if !isAssigned {
-		return "", fmt.Errorf("user %s is not a reviewer", oldUserID)
+		return "", conflict(ErrCodeNotAssigned, "reviewer is not assigned to this PR")
 	}
 
 	oldUser, err := s.userStorage.GetByID(ctx, oldUserID)
 	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return "", notFound("user not found")
+		}
 		return "", fmt.Errorf("failed to get old reviewer info: %w", err)
 	}
 
@@ -173,7 +198,7 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 	}
 
 	if len(validCandidates) == 0 {
-		return "", fmt.Errorf("no candidates left in team %s", oldUser.TeamName)
+		return "", conflict(ErrCodeNoCandidate, "no active replacement candidate in team")
 	}
 
 	newReviewer := selectRandomReviewers(validCandidates, "", 1)[0]
@@ -203,15 +228,22 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 
 // CreateTeam creates a new team along with its members.
 func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.Team, error) {
-	if err := s.teamStorage.Save(ctx, team); err != nil {
+	if _, err := s.teamStorage.GetByName(ctx, team.Name); err == nil {
+		return nil, newServiceError(ErrCodeTeamExists, "team_name already exists", http.StatusBadRequest)
+	} else if err != nil && !errors.Is(err, postgres.ErrNotFound) {
 		return nil, err
 	}
 
-	for _, u := range team.Members {
+	if err := s.teamStorage.Save(ctx, team); err != nil {
+		return nil, fmt.Errorf("failed to save team: %w", err)
+	}
+
+	for i, u := range team.Members {
 		u.TeamName = team.Name
 		if err := s.userStorage.Save(ctx, u); err != nil {
 			return nil, fmt.Errorf("failed to save user %s: %w", u.ID, err)
 		}
+		team.Members[i] = u
 	}
 
 	return &team, nil
@@ -226,6 +258,9 @@ func (s *PRService) GetPR(ctx context.Context, id string) (*domain.PullRequest, 
 func (s *PRService) GetTeam(ctx context.Context, teamName string) (*domain.Team, error) {
 	team, err := s.teamStorage.GetByName(ctx, teamName)
 	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("team not found")
+		}
 		return nil, err
 	}
 
@@ -241,6 +276,9 @@ func (s *PRService) GetTeam(ctx context.Context, teamName string) (*domain.Team,
 // SetUserActive sets the active status of a user.
 func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive bool) (*domain.User, error) {
 	if err := s.userStorage.UpdateActivity(ctx, userID, isActive); err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("user not found")
+		}
 		return nil, err
 	}
 
@@ -248,14 +286,39 @@ func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive b
 }
 
 // GetUserReviews retrieves all pull requests assigned to a specific reviewer.
-func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]domain.PullRequest, error) {
-	return s.prStorage.GetByReviewerID(ctx, reviewerID)
+func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]domain.PullRequestShort, error) {
+	if _, err := s.userStorage.GetByID(ctx, reviewerID); err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("user not found")
+		}
+		return nil, err
+	}
+
+	prs, err := s.prStorage.GetByReviewerID(ctx, reviewerID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]domain.PullRequestShort, 0, len(prs))
+	for _, pr := range prs {
+		result = append(result, domain.PullRequestShort{
+			ID:       pr.ID,
+			Title:    pr.Title,
+			AuthorID: pr.AuthorID,
+			Status:   pr.Status,
+		})
+	}
+
+	return result, nil
 }
 
 // DeactivateTeam deactivates all users in a team and removes them from open pull requests.
 func (s *PRService) DeactivateTeam(ctx context.Context, teamName string) error {
 	_, err := s.teamStorage.GetByName(ctx, teamName)
 	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return notFound("team not found")
+		}
 		return err
 	}
 

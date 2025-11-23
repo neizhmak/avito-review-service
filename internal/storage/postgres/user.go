@@ -18,7 +18,14 @@ func NewUserStorage(db *sql.DB) *UserStorage {
 
 // Save saves a new user to the database.
 func (s *UserStorage) Save(ctx context.Context, user domain.User) error {
-	query := "INSERT INTO users (id, username, is_active, team_name) VALUES ($1, $2, $3, $4)"
+	query := `
+		INSERT INTO users (id, username, is_active, team_name)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO UPDATE
+		SET username = EXCLUDED.username,
+		    is_active = EXCLUDED.is_active,
+		    team_name = EXCLUDED.team_name
+	`
 
 	_, err := s.db.ExecContext(ctx, query, user.ID, user.Username, user.IsActive, user.TeamName)
 	if err != nil {
@@ -66,7 +73,7 @@ func (s *UserStorage) GetByID(ctx context.Context, userID string) (*domain.User,
 	var u domain.User
 	if err := row.Scan(&u.ID, &u.Username, &u.IsActive, &u.TeamName); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("user not found: %s", userID)
+			return nil, fmt.Errorf("%w: user %s", ErrNotFound, userID)
 		}
 		return nil, fmt.Errorf("failed to scan user: %w", err)
 	}
@@ -106,7 +113,7 @@ func (s *UserStorage) UpdateActivity(ctx context.Context, userID string, isActiv
 
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("user not found")
+		return fmt.Errorf("%w: user", ErrNotFound)
 	}
 	return nil
 }

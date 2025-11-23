@@ -2,12 +2,14 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/neizhmak/avito-review-service/internal/domain"
 	"github.com/neizhmak/avito-review-service/internal/service"
+	"github.com/neizhmak/avito-review-service/internal/storage/postgres"
 )
 
 type Handler struct {
@@ -51,7 +53,7 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 }
 
 // respondError writes a JSON error response with the given status code and message.
-func respondError(w http.ResponseWriter, status int, message string) {
+func respondError(w http.ResponseWriter, status int, code string, message string) {
 	type errorBody struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
@@ -61,29 +63,43 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	}
 
 	resp := errorResponse{
-		Error: errorBody{Code: "ERROR", Message: message},
+		Error: errorBody{Code: code, Message: message},
 	}
 	respondJSON(w, status, resp)
+}
+
+func mapError(err error) (int, string, string) {
+	var svcErr *service.ServiceError
+	if errors.As(err, &svcErr) {
+		return svcErr.Status, svcErr.Code, svcErr.Msg
+	}
+
+	if errors.Is(err, postgres.ErrNotFound) {
+		return http.StatusNotFound, service.ErrCodeNotFound, "resource not found"
+	}
+
+	return http.StatusInternalServerError, "ERROR", err.Error()
 }
 
 func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	// Decode JSON body
 	var team domain.Team
 	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
 	// Validate input
 	if team.Name == "" {
-		respondError(w, http.StatusBadRequest, "team_name is required")
+		respondError(w, http.StatusBadRequest, "ERROR", "team_name is required")
 		return
 	}
 
 	// Create team via service
 	createdTeam, err := h.service.CreateTeam(r.Context(), team)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -97,15 +113,14 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createPR(w http.ResponseWriter, r *http.Request) {
 	var pr domain.PullRequest
 	if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
-	pr.Status = "OPEN"
-
 	createdPR, err := h.service.Create(r.Context(), pr)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -120,13 +135,14 @@ func (h *Handler) mergePR(w http.ResponseWriter, r *http.Request) {
 		PRID string `json:"pull_request_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
 	mergedPR, err := h.service.Merge(r.Context(), req.PRID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -149,7 +165,7 @@ func (h *Handler) reassignReviewer(w http.ResponseWriter, r *http.Request) {
 	}
 	var temp Alias
 	if err := json.NewDecoder(r.Body).Decode(&temp); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
@@ -162,13 +178,15 @@ func (h *Handler) reassignReviewer(w http.ResponseWriter, r *http.Request) {
 
 	newReviewerID, err := h.service.Reassign(r.Context(), req.PRID, req.OldUserID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
 	pr, err := h.service.GetPR(r.Context(), req.PRID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to fetch updated pr")
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -182,13 +200,14 @@ func (h *Handler) reassignReviewer(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getTeam(w http.ResponseWriter, r *http.Request) {
 	teamName := r.URL.Query().Get("team_name")
 	if teamName == "" {
-		respondError(w, http.StatusBadRequest, "team_name is required")
+		respondError(w, http.StatusBadRequest, "ERROR", "team_name is required")
 		return
 	}
 
 	team, err := h.service.GetTeam(r.Context(), teamName)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -202,13 +221,14 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request) {
 		IsActive bool   `json:"is_active"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
 	updatedUser, err := h.service.SetUserActive(r.Context(), req.UserID, req.IsActive)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -221,19 +241,20 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getUserReviews(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	if userID == "" {
-		respondError(w, http.StatusBadRequest, "user_id is required")
+		respondError(w, http.StatusBadRequest, "ERROR", "user_id is required")
 		return
 	}
 
 	prs, err := h.service.GetUserReviews(r.Context(), userID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
 	// Ensure prs is not nil
 	if prs == nil {
-		prs = []domain.PullRequest{}
+		prs = []domain.PullRequestShort{}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -248,12 +269,13 @@ func (h *Handler) deactivateTeam(w http.ResponseWriter, r *http.Request) {
 		TeamName string `json:"team_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid json")
+		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
 		return
 	}
 
 	if err := h.service.DeactivateTeam(r.Context(), req.TeamName); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 
@@ -264,7 +286,8 @@ func (h *Handler) deactivateTeam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.service.GetStats(r.Context())
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		status, code, msg := mapError(err)
+		respondError(w, status, code, msg)
 		return
 	}
 	respondJSON(w, http.StatusOK, stats)
