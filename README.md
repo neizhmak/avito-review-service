@@ -34,7 +34,10 @@ make clean
 4.  Контейнер останавливается.
 
 ```bash
-# Требуются локальные go и утилита goose (go install github.com/pressly/goose/v3/cmd/goose@latest)
+# Требуются локальный Go 
+# Установка зависимостей (goose)
+make deps
+# Запуск тестов
 make test
 ```
 
