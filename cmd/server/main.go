@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,7 +21,7 @@ import (
 func main() {
 	dbConnStr := os.Getenv("DB_CONNECTION_STRING")
 	if dbConnStr == "" {
-		dbConnStr = "postgres://user:password@localhost:5432/reviewer_db?sslmode=disable"
+		log.Fatal("DB_CONNECTION_STRING is required")
 	}
 
 	port := os.Getenv("HTTP_PORT")

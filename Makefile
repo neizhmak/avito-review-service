@@ -1,3 +1,5 @@
+TEST_DSN="postgres://user:password@localhost:5433/reviewer_db_test?sslmode=disable"
+
 run:
 	docker-compose up --build
 
@@ -16,8 +18,18 @@ stop:
 clean:
 	docker-compose down -v
 
+deps:
+	go install github.com/pressly/goose/v3/cmd/goose@latest
+
 test:
-	go test -v ./...
+	docker-compose up -d db_test
+	sleep 5
+
+	GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(TEST_DSN) goose -dir ./migrations up
+
+	TEST_DB_CONNECTION_STRING=$(TEST_DSN) go test -v ./...
+
+	docker-compose down -v db_test
 
 lint:
 	golangci-lint run

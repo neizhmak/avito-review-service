@@ -79,9 +79,11 @@ func mapError(err error) (int, string, string) {
 		case service.ErrCodePRExists, service.ErrCodePRMerged, service.ErrCodeNotAssigned, service.ErrCodeNoCandidate:
 			return http.StatusConflict, svcErr.Code, svcErr.Msg
 		default:
-			return http.StatusInternalServerError, "ERROR", svcErr.Msg
+			slog.Error("unexpected service error", "error", err)
+			return http.StatusInternalServerError, "ERROR", "internal error"
 		}
 	}
 
-	return http.StatusInternalServerError, "ERROR", err.Error()
+	slog.Error("unexpected error", "error", err)
+	return http.StatusInternalServerError, "ERROR", "internal error"
 }

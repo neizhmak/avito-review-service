@@ -17,7 +17,7 @@ func OpenTestDB(t *testing.T) *sql.DB {
 
 	connStr := os.Getenv("TEST_DB_CONNECTION_STRING")
 	if connStr == "" {
-		connStr = "postgres://user:password@localhost:5432/reviewer_db?sslmode=disable"
+		connStr = "postgres://user:password@localhost:5433/reviewer_db_test?sslmode=disable"
 	}
 
 	db, err := sql.Open("postgres", connStr)

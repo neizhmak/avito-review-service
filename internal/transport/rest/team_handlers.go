@@ -28,6 +28,13 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, m := range req.Members {
+		if m.ID == "" || m.Username == "" {
+			respondError(w, http.StatusBadRequest, "ERROR", "member user_id and username are required")
+			return
+		}
+	}
+
 	createdTeam, err := h.service.CreateTeam(r.Context(), domain.Team{
 		Name:    req.TeamName,
 		Members: req.Members,
