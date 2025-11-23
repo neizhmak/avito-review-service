@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/neizhmak/avito-review-service/internal/service"
@@ -23,18 +28,23 @@ func main() {
 		port = "8080"
 	}
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
-		log.Fatalf("failed to open db: %v", err)
+		logger.Error("failed to open db", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close db: %v", err)
+			logger.Warn("failed to close db", "error", err)
 		}
 	}()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("failed to ping db: %v", err)
+		logger.Error("failed to ping db", "error", err)
+		os.Exit(1)
 	}
 
 	// initialize storages
@@ -48,10 +58,30 @@ func main() {
 	// initialize handler (HTTP)
 	handler := rest.NewHandler(prService)
 
-	// start server
-	log.Printf("Starting server on :%s", port)
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      handler.InitRouter(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
-	if err := http.ListenAndServe(":"+port, handler.InitRouter()); err != nil {
-		log.Fatalf("server failed: %v", err)
+	logger.Info("starting server", "port", port)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server failed", "error", err)
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	logger.Info("shutting down server")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error("graceful shutdown failed", "error", err)
 	}
 }
