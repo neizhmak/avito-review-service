@@ -9,13 +9,13 @@ const (
 	PRStatusMerged PRStatus = "MERGED"
 )
 
-// Team represents a team in the system.
+// Team represents a group of users working together.
 type Team struct {
 	Name    string `json:"team_name"`
 	Members []User `json:"members,omitempty"`
 }
 
-// User represents a team member.
+// User represents an individual user in the system.
 type User struct {
 	ID       string `json:"user_id"`
 	Username string `json:"username"`
@@ -23,6 +23,7 @@ type User struct {
 	TeamName string `json:"team_name"`
 }
 
+// PullRequest represents a pull request in the system.
 type PullRequest struct {
 	ID        string     `json:"pull_request_id"`
 	Title     string     `json:"pull_request_name"`
@@ -33,16 +34,19 @@ type PullRequest struct {
 	MergedAt  *time.Time `json:"mergedAt,omitempty"`
 }
 
+// ReviewerStats represents statistics for a reviewer.
 type ReviewerStats struct {
 	ReviewerID string `json:"reviewer_id"`
 	Count      int    `json:"review_count"`
 }
 
+// SystemStats represents overall system statistics.
 type SystemStats struct {
 	TotalPRs     int             `json:"total_prs"`
 	TopReviewers []ReviewerStats `json:"top_reviewers"`
 }
 
+// PullRequestShort represents a summarized view of a pull request.
 type PullRequestShort struct {
 	ID       string   `json:"pull_request_id"`
 	Title    string   `json:"pull_request_name"`
