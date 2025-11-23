@@ -7,16 +7,11 @@ import (
 	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
+	"github.com/neizhmak/avito-review-service/internal/storage"
 )
 
 type PullRequestStorage struct {
 	db *sql.DB
-}
-
-type QueryExecutor interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
 func NewPullRequestStorage(db *sql.DB) *PullRequestStorage {
@@ -24,7 +19,7 @@ func NewPullRequestStorage(db *sql.DB) *PullRequestStorage {
 }
 
 // Save saves a new pr to the database.
-func (s *PullRequestStorage) Save(ctx context.Context, executor QueryExecutor, pr domain.PullRequest) error {
+func (s *PullRequestStorage) Save(ctx context.Context, executor storage.QueryExecutor, pr domain.PullRequest) error {
 	query := "INSERT INTO pull_requests (id, title, author_id, status) VALUES ($1, $2, $3, $4)"
 
 	_, err := executor.ExecContext(ctx, query, pr.ID, pr.Title, pr.AuthorID, pr.Status)
@@ -36,7 +31,7 @@ func (s *PullRequestStorage) Save(ctx context.Context, executor QueryExecutor, p
 }
 
 // SaveReviewer assigns a reviewer to a pull request.
-func (s *PullRequestStorage) SaveReviewer(ctx context.Context, executor QueryExecutor, prID, reviewerID string) error {
+func (s *PullRequestStorage) SaveReviewer(ctx context.Context, executor storage.QueryExecutor, prID, reviewerID string) error {
 	query := "INSERT INTO pr_reviewers (pull_request_id, reviewer_id) VALUES ($1, $2)"
 	_, err := executor.ExecContext(ctx, query, prID, reviewerID)
 	return err
@@ -68,9 +63,9 @@ func (s *PullRequestStorage) GetByID(ctx context.Context, id string) (*domain.Pu
 }
 
 // UpdateStatus updates the status of a pull request, setting merged_at if status is MERGED.
-func (s *PullRequestStorage) UpdateStatus(ctx context.Context, executor QueryExecutor, id string, status string) error {
+func (s *PullRequestStorage) UpdateStatus(ctx context.Context, executor storage.QueryExecutor, id string, status domain.PRStatus) error {
 	var query string
-	if status == "MERGED" {
+	if status == domain.PRStatusMerged {
 		query = "UPDATE pull_requests SET status = $1, merged_at = NOW() WHERE id = $2"
 	} else {
 		query = "UPDATE pull_requests SET status = $1 WHERE id = $2"
@@ -106,7 +101,7 @@ func (s *PullRequestStorage) GetReviewers(ctx context.Context, prID string) ([]s
 }
 
 // DeleteReviewer removes a reviewer from a pull request.
-func (s *PullRequestStorage) DeleteReviewer(ctx context.Context, executor QueryExecutor, prID, reviewerID string) error {
+func (s *PullRequestStorage) DeleteReviewer(ctx context.Context, executor storage.QueryExecutor, prID, reviewerID string) error {
 	query := "DELETE FROM pr_reviewers WHERE pull_request_id = $1 AND reviewer_id = $2"
 	res, err := executor.ExecContext(ctx, query, prID, reviewerID)
 	if err != nil {
@@ -149,17 +144,17 @@ func (s *PullRequestStorage) GetByReviewerID(ctx context.Context, reviewerID str
 }
 
 // RemoveReviewersByTeam removes all reviewers from open pull requests for a given team.
-func (s *PullRequestStorage) RemoveReviewersByTeam(ctx context.Context, executor QueryExecutor, teamName string) error {
+func (s *PullRequestStorage) RemoveReviewersByTeam(ctx context.Context, executor storage.QueryExecutor, teamName string) error {
 	query := `
 		DELETE FROM pr_reviewers
 		WHERE reviewer_id IN (
 			SELECT id FROM users WHERE team_name = $1
 		)
 		AND pull_request_id IN (
-			SELECT id FROM pull_requests WHERE status = 'OPEN'
+			SELECT id FROM pull_requests WHERE status = $2
 		)
 	`
-	_, err := executor.ExecContext(ctx, query, teamName)
+	_, err := executor.ExecContext(ctx, query, teamName, domain.PRStatusOpen)
 	if err != nil {
 		return fmt.Errorf("failed to remove team reviewers: %w", err)
 	}
