@@ -1,7 +1,5 @@
 package service
 
-import "net/http"
-
 const (
 	ErrCodeTeamExists  = "TEAM_EXISTS"
 	ErrCodePRExists    = "PR_EXISTS"
@@ -12,23 +10,22 @@ const (
 )
 
 type ServiceError struct {
-	Code   string
-	Msg    string
-	Status int
+	Code string
+	Msg  string
 }
 
 func (e *ServiceError) Error() string {
 	return e.Msg
 }
 
-func newServiceError(code string, msg string, status int) *ServiceError {
-	return &ServiceError{Code: code, Msg: msg, Status: status}
+func newServiceError(code string, msg string) *ServiceError {
+	return &ServiceError{Code: code, Msg: msg}
 }
 
 func notFound(msg string) *ServiceError {
-	return newServiceError(ErrCodeNotFound, msg, http.StatusNotFound)
+	return newServiceError(ErrCodeNotFound, msg)
 }
 
 func conflict(code, msg string) *ServiceError {
-	return newServiceError(code, msg, http.StatusConflict)
+	return newServiceError(code, msg)
 }

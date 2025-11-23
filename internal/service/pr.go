@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
@@ -229,7 +228,7 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 // CreateTeam creates a new team along with its members.
 func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.Team, error) {
 	if _, err := s.teamStorage.GetByName(ctx, team.Name); err == nil {
-		return nil, newServiceError(ErrCodeTeamExists, "team_name already exists", http.StatusBadRequest)
+		return nil, newServiceError(ErrCodeTeamExists, "team_name already exists")
 	} else if err != nil && !errors.Is(err, postgres.ErrNotFound) {
 		return nil, err
 	}
@@ -251,7 +250,14 @@ func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.T
 
 // GetPR retrieves a pull request by its ID.
 func (s *PRService) GetPR(ctx context.Context, id string) (*domain.PullRequest, error) {
-	return s.prStorage.GetByID(ctx, id)
+	pr, err := s.prStorage.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, notFound("pr not found")
+		}
+		return nil, err
+	}
+	return pr, nil
 }
 
 // GetTeam retrieves a team by its name along with its members.

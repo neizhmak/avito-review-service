@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/neizhmak/avito-review-service/internal/domain"
 	"github.com/neizhmak/avito-review-service/internal/service"
-	"github.com/neizhmak/avito-review-service/internal/storage/postgres"
 )
 
 type Handler struct {
@@ -71,11 +70,16 @@ func respondError(w http.ResponseWriter, status int, code string, message string
 func mapError(err error) (int, string, string) {
 	var svcErr *service.ServiceError
 	if errors.As(err, &svcErr) {
-		return svcErr.Status, svcErr.Code, svcErr.Msg
-	}
-
-	if errors.Is(err, postgres.ErrNotFound) {
-		return http.StatusNotFound, service.ErrCodeNotFound, "resource not found"
+		switch svcErr.Code {
+		case service.ErrCodeNotFound:
+			return http.StatusNotFound, svcErr.Code, svcErr.Msg
+		case service.ErrCodeTeamExists:
+			return http.StatusBadRequest, svcErr.Code, svcErr.Msg
+		case service.ErrCodePRExists, service.ErrCodePRMerged, service.ErrCodeNotAssigned, service.ErrCodeNoCandidate:
+			return http.StatusConflict, svcErr.Code, svcErr.Msg
+		default:
+			return http.StatusInternalServerError, "ERROR", svcErr.Msg
+		}
 	}
 
 	return http.StatusInternalServerError, "ERROR", err.Error()
