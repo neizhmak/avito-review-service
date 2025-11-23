@@ -3,11 +3,11 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/neizhmak/avito-review-service/internal/domain"
 	"github.com/neizhmak/avito-review-service/internal/service"
 )
 
@@ -64,6 +64,7 @@ func respondError(w http.ResponseWriter, status int, code string, message string
 	resp := errorResponse{
 		Error: errorBody{Code: code, Message: message},
 	}
+	slog.Error("request failed", "status", status, "code", code, "message", message)
 	respondJSON(w, status, resp)
 }
 
@@ -83,216 +84,4 @@ func mapError(err error) (int, string, string) {
 	}
 
 	return http.StatusInternalServerError, "ERROR", err.Error()
-}
-
-func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
-	// Decode JSON body
-	var team domain.Team
-	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	// Validate input
-	if team.Name == "" {
-		respondError(w, http.StatusBadRequest, "ERROR", "team_name is required")
-		return
-	}
-
-	// Create team via service
-	createdTeam, err := h.service.CreateTeam(r.Context(), team)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	// Respond with created team
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"team": createdTeam,
-	})
-}
-
-// createPR handles the HTTP request to create a new pull request.
-func (h *Handler) createPR(w http.ResponseWriter, r *http.Request) {
-	var pr domain.PullRequest
-	if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	createdPR, err := h.service.Create(r.Context(), pr)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"pr": createdPR,
-	})
-}
-
-// mergePR handles the HTTP request to merge a pull request.
-func (h *Handler) mergePR(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PRID string `json:"pull_request_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	mergedPR, err := h.service.Merge(r.Context(), req.PRID)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"pr": mergedPR,
-	})
-}
-
-// ReassignReviewer handles the HTTP request to reassign a reviewer on a pull request.
-func (h *Handler) reassignReviewer(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PRID      string `json:"pull_request_id"`
-		OldUserID string `json:"old_user_id"`
-	}
-
-	type Alias struct {
-		PRID          string `json:"pull_request_id"`
-		OldUserID     string `json:"old_user_id"`
-		OldReviewerID string `json:"old_reviewer_id"`
-	}
-	var temp Alias
-	if err := json.NewDecoder(r.Body).Decode(&temp); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	targetID := temp.OldUserID
-	if targetID == "" {
-		targetID = temp.OldReviewerID
-	}
-	req.PRID = temp.PRID
-	req.OldUserID = targetID
-
-	newReviewerID, err := h.service.Reassign(r.Context(), req.PRID, req.OldUserID)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	pr, err := h.service.GetPR(r.Context(), req.PRID)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"pr":          pr,
-		"replaced_by": newReviewerID,
-	})
-}
-
-// getTeam handles the HTTP request to retrieve a team by its name.
-func (h *Handler) getTeam(w http.ResponseWriter, r *http.Request) {
-	teamName := r.URL.Query().Get("team_name")
-	if teamName == "" {
-		respondError(w, http.StatusBadRequest, "ERROR", "team_name is required")
-		return
-	}
-
-	team, err := h.service.GetTeam(r.Context(), teamName)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, team)
-}
-
-// setUserActive handles the HTTP request to set a user's active status.
-func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID   string `json:"user_id"`
-		IsActive bool   `json:"is_active"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	updatedUser, err := h.service.SetUserActive(r.Context(), req.UserID, req.IsActive)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"user": updatedUser,
-	})
-}
-
-// getUserReviews handles the HTTP request to retrieve pull requests assigned to a user for review.
-func (h *Handler) getUserReviews(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		respondError(w, http.StatusBadRequest, "ERROR", "user_id is required")
-		return
-	}
-
-	prs, err := h.service.GetUserReviews(r.Context(), userID)
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	// Ensure prs is not nil
-	if prs == nil {
-		prs = []domain.PullRequestShort{}
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"user_id":       userID,
-		"pull_requests": prs,
-	})
-}
-
-// deactivateTeam handles the HTTP request to deactivate all users in a team.
-func (h *Handler) deactivateTeam(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TeamName string `json:"team_name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "ERROR", "invalid json")
-		return
-	}
-
-	if err := h.service.DeactivateTeam(r.Context(), req.TeamName); err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]string{"status": "deactivated"})
-}
-
-// getStats handles the HTTP request to retrieve system statistics.
-func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.service.GetStats(r.Context())
-	if err != nil {
-		status, code, msg := mapError(err)
-		respondError(w, status, code, msg)
-		return
-	}
-	respondJSON(w, http.StatusOK, stats)
 }
