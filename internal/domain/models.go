@@ -2,6 +2,13 @@ package domain
 
 import "time"
 
+type PRStatus string
+
+const (
+	PRStatusOpen   PRStatus = "OPEN"
+	PRStatusMerged PRStatus = "MERGED"
+)
+
 // Team represents a team in the system.
 type Team struct {
 	Name    string `json:"team_name"`
@@ -20,7 +27,7 @@ type PullRequest struct {
 	ID        string     `json:"pull_request_id"`
 	Title     string     `json:"pull_request_name"`
 	AuthorID  string     `json:"author_id"`
-	Status    string     `json:"status"`
+	Status    PRStatus   `json:"status"`
 	Reviewers []string   `json:"assigned_reviewers"`
 	CreatedAt *time.Time `json:"createdAt,omitempty"`
 	MergedAt  *time.Time `json:"mergedAt,omitempty"`
@@ -37,8 +44,8 @@ type SystemStats struct {
 }
 
 type PullRequestShort struct {
-	ID       string `json:"pull_request_id"`
-	Title    string `json:"pull_request_name"`
-	AuthorID string `json:"author_id"`
-	Status   string `json:"status"`
+	ID       string   `json:"pull_request_id"`
+	Title    string   `json:"pull_request_name"`
+	AuthorID string   `json:"author_id"`
+	Status   PRStatus `json:"status"`
 }

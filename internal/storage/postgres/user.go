@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
+	"github.com/neizhmak/avito-review-service/internal/storage"
 )
 
 type UserStorage struct {
@@ -119,7 +120,7 @@ func (s *UserStorage) UpdateActivity(ctx context.Context, userID string, isActiv
 }
 
 // MassDeactivate sets is_active to false for all users in the specified team.
-func (s *UserStorage) MassDeactivate(ctx context.Context, executor QueryExecutor, teamName string) error {
+func (s *UserStorage) MassDeactivate(ctx context.Context, executor storage.QueryExecutor, teamName string) error {
 	query := "UPDATE users SET is_active = false WHERE team_name = $1"
 	_, err := executor.ExecContext(ctx, query, teamName)
 	if err != nil {

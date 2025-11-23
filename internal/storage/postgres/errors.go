@@ -1,5 +1,5 @@
 package postgres
 
-import "errors"
+import "github.com/neizhmak/avito-review-service/internal/storage"
 
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = storage.ErrNotFound

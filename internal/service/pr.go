@@ -9,20 +9,20 @@ import (
 	"time"
 
 	"github.com/neizhmak/avito-review-service/internal/domain"
-	"github.com/neizhmak/avito-review-service/internal/storage/postgres"
+	"github.com/neizhmak/avito-review-service/internal/storage"
 )
 
 type PRService struct {
-	prStorage   *postgres.PullRequestStorage
-	userStorage *postgres.UserStorage
-	teamStorage *postgres.TeamStorage
+	prStorage   PullRequestRepository
+	userStorage UserRepository
+	teamStorage TeamRepository
 	db          *sql.DB
 }
 
 func NewPRService(
-	prStorage *postgres.PullRequestStorage,
-	userStorage *postgres.UserStorage,
-	teamStorage *postgres.TeamStorage,
+	prStorage PullRequestRepository,
+	userStorage UserRepository,
+	teamStorage TeamRepository,
 	db *sql.DB,
 ) *PRService {
 	return &PRService{
@@ -35,12 +35,12 @@ func NewPRService(
 
 // Create creates a new pull request and assigns reviewers.
 func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.PullRequest, error) {
-	pr.Status = "OPEN"
+	pr.Status = domain.PRStatusOpen
 
 	// Validate author
 	author, err := s.userStorage.GetByID(ctx, pr.AuthorID)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("author not found")
 		}
 		return nil, fmt.Errorf("failed to get author: %w", err)
@@ -50,7 +50,7 @@ func (s *PRService) Create(ctx context.Context, pr domain.PullRequest) (*domain.
 	existing, getErr := s.prStorage.GetByID(ctx, pr.ID)
 	if getErr == nil && existing != nil {
 		return nil, conflict(ErrCodePRExists, "PR id already exists")
-	} else if getErr != nil && !errors.Is(getErr, postgres.ErrNotFound) {
+	} else if getErr != nil && !errors.Is(getErr, storage.ErrNotFound) {
 		return nil, fmt.Errorf("failed to check PR existence: %w", getErr)
 	}
 
@@ -111,21 +111,21 @@ func selectRandomReviewers(candidates []domain.User, authorID string, count int)
 func (s *PRService) Merge(ctx context.Context, prID string) (*domain.PullRequest, error) {
 	pr, err := s.prStorage.GetByID(ctx, prID)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("pr not found")
 		}
 		return nil, fmt.Errorf("failed to get pr: %w", err)
 	}
 
-	if pr.Status == "MERGED" {
+	if pr.Status == domain.PRStatusMerged {
 		return pr, nil
 	}
 
-	if err := s.prStorage.UpdateStatus(ctx, s.db, prID, "MERGED"); err != nil {
+	if err := s.prStorage.UpdateStatus(ctx, s.db, prID, domain.PRStatusMerged); err != nil {
 		return nil, err
 	}
 
-	pr.Status = "MERGED"
+	pr.Status = domain.PRStatusMerged
 	now := time.Now()
 	pr.MergedAt = &now
 
@@ -136,12 +136,12 @@ func (s *PRService) Merge(ctx context.Context, prID string) (*domain.PullRequest
 func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (string, error) {
 	pr, err := s.prStorage.GetByID(ctx, prID)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return "", notFound("pr not found")
 		}
 		return "", fmt.Errorf("pr not found: %w", err)
 	}
-	if pr.Status == "MERGED" {
+	if pr.Status == domain.PRStatusMerged {
 		return "", conflict(ErrCodePRMerged, "cannot reassign on merged PR")
 	}
 
@@ -162,7 +162,7 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 
 	oldUser, err := s.userStorage.GetByID(ctx, oldUserID)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return "", notFound("user not found")
 		}
 		return "", fmt.Errorf("failed to get old reviewer info: %w", err)
@@ -229,7 +229,7 @@ func (s *PRService) Reassign(ctx context.Context, prID, oldUserID string) (strin
 func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.Team, error) {
 	if _, err := s.teamStorage.GetByName(ctx, team.Name); err == nil {
 		return nil, newServiceError(ErrCodeTeamExists, "team_name already exists")
-	} else if err != nil && !errors.Is(err, postgres.ErrNotFound) {
+	} else if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
 
@@ -252,7 +252,7 @@ func (s *PRService) CreateTeam(ctx context.Context, team domain.Team) (*domain.T
 func (s *PRService) GetPR(ctx context.Context, id string) (*domain.PullRequest, error) {
 	pr, err := s.prStorage.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("pr not found")
 		}
 		return nil, err
@@ -264,7 +264,7 @@ func (s *PRService) GetPR(ctx context.Context, id string) (*domain.PullRequest, 
 func (s *PRService) GetTeam(ctx context.Context, teamName string) (*domain.Team, error) {
 	team, err := s.teamStorage.GetByName(ctx, teamName)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("team not found")
 		}
 		return nil, err
@@ -282,7 +282,7 @@ func (s *PRService) GetTeam(ctx context.Context, teamName string) (*domain.Team,
 // SetUserActive sets the active status of a user.
 func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive bool) (*domain.User, error) {
 	if err := s.userStorage.UpdateActivity(ctx, userID, isActive); err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("user not found")
 		}
 		return nil, err
@@ -294,7 +294,7 @@ func (s *PRService) SetUserActive(ctx context.Context, userID string, isActive b
 // GetUserReviews retrieves all pull requests assigned to a specific reviewer.
 func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]domain.PullRequestShort, error) {
 	if _, err := s.userStorage.GetByID(ctx, reviewerID); err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, notFound("user not found")
 		}
 		return nil, err
@@ -322,7 +322,7 @@ func (s *PRService) GetUserReviews(ctx context.Context, reviewerID string) ([]do
 func (s *PRService) DeactivateTeam(ctx context.Context, teamName string) error {
 	_, err := s.teamStorage.GetByName(ctx, teamName)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return notFound("team not found")
 		}
 		return err
