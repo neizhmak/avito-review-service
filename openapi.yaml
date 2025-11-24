@@ -453,3 +453,34 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /team/deactivate:
+    post:
+      tags: [Teams]
+      summary: Деактивация команды (Дополнительное задание)
+      description: Атомарно отключает всех участников команды и снимает их с ревью в открытых PR. Оптимизировано для High Load.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [team_name]
+              properties:
+                team_name:
+                  type: string
+      responses:
+        '200':
+          description: Успешная деактивация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deactivated
+        '404':
+          description: Команда не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
